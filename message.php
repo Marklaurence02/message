@@ -1,313 +1,205 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Admin Dashboard</title>
-    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/css/bootstrap.min.css" crossorigin="anonymous">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/4.7.0/css/font-awesome.min.css">
-    <link href='https://unpkg.com/boxicons@2.1.4/css/boxicons.min.css' rel='stylesheet'>
-    <link rel="stylesheet" href="css/panel.css">
-</head>
-<body>
-    <?php include "Header_nav/ownerHeader.php"; ?>
+<?php
+session_start();
 
-    <?php
-    include 'assets/config.php';
-    header('Content-Type: text/html; charset=UTF-8');
+// Initialize messages array in session if it doesn't exist
+if (!isset($_SESSION['messages'])) {
+    $_SESSION['messages'] = [];
+}
 
-    $users = [];
-    if (!isset($_SESSION['role'], $_SESSION['user_id'])) {
-        error_log("User  not authenticated or missing role");
-        exit("<div class='alert alert-danger text-center'>User  not authenticated.</div>");
-    }
+// Handle form submission
+if ($_SERVER['REQUEST_METHOD'] === 'POST' && !empty($_POST['message'])) {
+    $user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 1; // Example user ID
+    $message = htmlspecialchars($_POST['message']); // Sanitize user input
+    $_SESSION['messages'][] = ['user_id' => $user_id, 'message' => $message]; // Store message
 
-    $currentRole = $_SESSION['role'];
-    $rolesToFetch = [];
-    switch ($currentRole) {
-        case 'Admin':
-            $rolesToFetch = ['Owner', 'Staff'];
-            break;
-        case 'Owner':
-            $rolesToFetch = ['Admin'];
-            break;
-        case 'Staff':
-            $rolesToFetch = ['Admin'];
-            break;
-        default:
-            error_log("Undefined role: $currentRole");
-            exit("<div class='alert alert-danger text-center'>Undefined user role.</div>");
-    }
+    // Simulate a bot response (you can replace this with actual logic)
+    $bot_response = "You said: " . $message; // Simple echo response
+    $_SESSION['messages'][] = ['user_id' => 0, 'message' => $bot_response]; // Store bot response
+}
 
-    if (!empty($rolesToFetch)) {
-        $rolePlaceholders = implode(',', array_fill(0, count($rolesToFetch), '?'));
-        $sql = "SELECT DISTINCT user_id, CONCAT(first_name, ' ', last_name) AS username, role 
-                FROM users 
-                WHERE role IN ($rolePlaceholders)";
-        
-        try {
-            $stmt = $conn->prepare($sql);
-            if (!$stmt) throw new Exception($conn->error);
-            $stmt->bind_param(str_repeat('s', count($rolesToFetch)), ...$rolesToFetch);
-            $stmt->execute();
-            $result = $stmt->get_result();
-            $users = $result->fetch_all(MYSQLI_ASSOC);
-            $stmt->close();
-        } catch (Exception $e) {
-            error_log("Database error: " . $e->getMessage());
-            exit("<div class='alert alert-danger text-center'>Error loading users.</div>");
-        }
-    }
+// Get the user ID from the session
+$user_id = isset($_SESSION['user_id']) ? $_SESSION['user_id'] : 1; // Example user ID
+?>
 
-    $conn->close();
-    ?>
-
-    <div class="container mt-4">
-        <!-- User List -->
-        <div class="card mx-auto user-list" id="user-list">
-            <div class="card-header d-flex justify-content-between align-items-center">
-                <h5 class="mb-0">Messages</h5>
-                <div class="input-group">
-                    <input type="text" id="search-input" class="form-control search-input d-none" placeholder="Search..." oninput="searchMessage()">
-                    <div class="input-group-append">
-                        <button class="btn btn-outline-secondary" onclick="toggleSearchInput()"><i class='bx bx-search-alt-2'></i></button>
-                    </div>
-                </div>
-            </div>
-            <div class="list-group list-group-flush" id="user-list-content">
-                <?php if (!empty($users)): ?>
-                    <?php foreach ($users as $user): ?>
-                        <div class="list-group-item d-flex justify-content-between align-items-center user-item" 
-                             data-user-id="<?php echo $user['user_id']; ?>" 
-                             onclick="openConversation(<?php echo $user['user_id']; ?>, '<?php echo htmlspecialchars($user['username'], ENT_QUOTES); ?>')">
-                            <div class="d-flex align-items-center">
-                                <div class="user-initial">
-                                    <?php echo strtoupper(substr($user['username'], 0, 1)); ?>
-                                </div>
-                                <div class="user-details">
-                                    <div class="username">
-                                        <?php echo htmlspecialchars($user['username'], ENT_QUOTES); ?>
-                                        <span class="role">(<?php echo htmlspecialchars($user['role'], ENT_QUOTES); ?>)</span>
-                                    </div>
-                                    <small class="text-muted recent-message">Loading...</small>
-                                    <div class="message-date text-muted"></div>
-                                </div>
-                            </div>
-                            <span class="blue-dot d-none"></span>
-                        </div>
-                    <?php endforeach; ?>
-                <?php else: ?>
-                    <div class="list-group-item text-center">No users available.</div>
-                <?php endif; ?>
+<div class="container d-flex justify-content-center align-items-center vh-100">
+    <div class="chat-container">
+        <div class="header">Chat with us (User  ID: <span id="user-id"><?php echo $_SESSION['user_id']; ?></span>)</div>
+        <div id="chat-box" class="message">
+            <div class="welcome-message">
+                <div class="welcome-sent">Welcome to Dine&Watch! I am your Dine&Watch virtual assistant. I'll be happy to answer your questions. For an uninterrupted conversation with us, please ensure that you have a stable internet connection. Please tell me what you would like to know:</div>
             </div>
         </div>
-    </div>
-
-    <!-- Conversation View -->
-    <div class="card mx-auto conversation-view d-none" id="conversation-view">
-        <div class="card-header d-flex justify-content-between align-items-center">
-            <h5 class="mb-0" id="conversation-username">Username</h5>
-            <button class="btn btn-outline-primary btn-sm" onclick="backToUserList()">Back</button>
+        <div class="options row gx-2 gy-2 p-3">
+            <div class="col-12 option" data-question="No Refund Policy?">No Refund Policy?</div>
+            <div class="col-12 option" data-question="What time Dine&Watch Open">What time Dine&Watch Open</div>
+            <div class="col-12 option" data-question="FAQ">FAQ</div>
         </div>
-        <div class="card-body message-history" id="message-box">
-            <!-- Messages will be dynamically loaded here -->
+        <div class="input-container">
+            <input type="text" id="message-input" class="form-control me-2" placeholder="Type something..." required>
+            <button id="send-btn" class="btn btn-primary">Send</button>
         </div>
-        <div class="card-footer">
-            <form id="messages-form" class="d-flex" onsubmit="sendMessage(event)">
-                <input type="text" id="message-input" class="form-control" placeholder="Type a message..." required autocomplete="off">
-                <button type="submit" class="btn btn-primary ml-2">Send</button>
-            </form>
-        </div>
+        <div id="notification-badge" class="notification-badge"></div>
     </div>
 </div>
-    <style>
-        /* Container and Card */
-        .container {
-            max-width: 100%;
-            padding-top: 40px;
-            align-items: center;
-        }
 
-        /* Card */
-        .card {
-            background-color: #f8f9fa;
-            border: none;
-            border-radius: 8px;
-            overflow: hidden;
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-            width: 100%;
-        }
+<script src="https://code.jquery.com/jquery-3.5.1.min.js"></script>
+<script>
+    $(document).ready(function() {
+        $('#send-btn').click(function() {
+            const message = $('#message-input').val();
+            const userId = $('#user-id').text();
+            if (message.trim() !== '') {
+                // Send user message to the server
+                $.ajax({
+                    url: '/usermessagecontrol/get_users.php', // The PHP file that handles the chat logic
+                    type: 'POST',
+                    data: {
+                        message: message,
+                        user_id: userId
+                    },
+                    success: function(response) {
+                        const jsonResponse = JSON.parse(response);
+                        $('#chat-box').append('<div class="user-message">' + message + '</div>');
+                        $('#chat-box').append('<div class="assistant-message">' + jsonResponse.response + '</div>');
+                        $('#chat-box').scrollTop($('#chat-box')[0].scrollHeight); // Scroll to the bottom
+                        $('#message-input').val(''); // Clear the input
+                    },
+                    error: function() {
+                        alert('Error sending message. Please try again.');
+                    }
+                });
+            }
+        });
 
-        /* Header */
-        .card-header {
-            background-color: #3B3131;
-            color: #ffffff;
-            padding: 20px 25px;
-        }
+        // Handle option clicks
+        $('.option').click(function() {
+            const question = $(this).data('question');
+            $('#chat-box').append('<div class="user-message">' + question + '</div>'); // Display the user's message
+            $('#message-input').val(question); // Set the input value to the question
+            
+            // Call the chatbot response directly instead of sending to staff
+            const botResponse = getBotResponse(question);
+            $('#chat-box').append('<div class="assistant-message">' + botResponse + '</div>');
+            $('#chat-box').scrollTop($('#chat-box')[0].scrollHeight); // Scroll to the bottom
+            $('#message-input').val(''); // Clear the input
+        });
 
-        /* Button Styling */
-        .btn-outline-primary {
-            color: #3B3131;
-            border-color: #3B3131;
+        // Function to generate bot responses based on predefined questions
+        function getBotResponse(question) {
+            switch (question) {
+                case "No Refund Policy?":
+                    return "Our policy states that all sales are final. Please refer to our terms and conditions for more details.";
+                case "What time Dine&Watch Open":
+                    return "Dine&Watch opens at 11 AM and closes at 11 PM daily.";
+                case "FAQ":
+                    return "You can find answers to common questions in our FAQ section on our website.";
+                default:
+                    return "I'm sorry, I don't have an answer for that.";
+            }
         }
+    });
+</script>
 
-        .btn-outline-primary:hover {
-            background-color: #3B3131;
-            color: #ffffff;
-        }
 
-        /* Search Bar */
-        .input-group .search-input {
-            background-color: #ffffff;
-            border: 1px solid #cccccc;
-            color: #333333;
-            padding: 12px;
-            font-size: 1rem;
-        }
-  /* Centered Date Separator */
-        .separator-centered {
-            text-align: center;
-            margin: 10px 0;
-            position: relative;
-            font-size: 0.85rem;
-            color: #888;
-        }
-        /* Conversation List */
-        .list-group-item {
-            background-color: #ffffff;
-            color: #333333;
-            padding: 15px 20px;
-            border-bottom: 1px solid #e0e0e0;
-            border-left: 5px solid transparent;
-            cursor: pointer;
-            transition: background-color 0.2s, border-color 0.2s;
-            font-size: 1rem;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
 
-        .list-group-item.border-blue {
-            border-left-color: #007bff;
-        }
+<style>
+.chat-container {
+    width: 100%;
+    max-width: 400px;
+    background-color: #ffffff;
+    border-radius: 8px;
+    box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+    overflow: hidden;
+}
 
-        .list-group-item:hover {
-            background-color: #f1f1f1;
-        }
+.header {
+    background-color: #005bb5;
+    color: #ffffff;
+    padding: 16px;
+    text-align: center;
+    font-weight: bold;
+}
 
-        /* Blue Dot for Unread Messages */
-        .blue-dot {
-            width: 10px;
-            height: 10px;
-            background-color: #007bff;
-            border-radius: 50%;
-            margin-left: 10px;
-            display: inline-block;
-        }
+.message {
+    padding: 16px;
+    background-color: #e8f4ff; /* Slightly blue background for the message area */
+    color: #333;
+    font-size: 14px;
+    max-height: 300px;
+    overflow-y: auto;
+}
 
-        /* User Initial */
-        .user-initial {
-            width: 45px;
-            height: 45px;
-            background-color: #cccccc;
-            color: #333333;
-            font-size: 1.2rem;
-            font-weight: bold;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            border-radius: 50%;
-            margin-right: 15px;
-        }
+.welcome-message {
+    margin-bottom: 10px;
+}
 
-        .username {
-            font-weight: bold;
-            font-size: 1rem;
-        }
+.options .option {
+    background-color: #d1e7dd;
+    color: #005bb5;
+    padding: 10px;
+    border-radius: 10px;
+    text-align: center;
+    font-size: 14px;
+    cursor: pointer;
+    margin-bottom: 5px;
+    border: 1px solid #ddd;
+}
 
-        .recent-message {
-            color: #6c757d;
-            font-size: 0.9rem;
-            margin-top: 2px;
-        }
+.options .option:hover {
+    background-color: #005bb5;
+    color: #ffffff;
+}
 
-        .message-history {
-            padding: 15px;
-            max-height: 400px;
-            overflow-y: auto;
-        }
+.input-container input {
+    border: none;
+    outline: none;
+}
 
-        .message {
-            margin-bottom: 15px;
-            max-width: 100%;
-        }
+.notification-badge {
+    background-color: red;
+    color: white;
+    border-radius: 50%;
+    padding: 5px;
+    display: none;
+    font-size: 0.8rem;
+    position: absolute;
+    top: 10px;
+    right: 10px;
+}
 
-        .sent p {
-            background-color: #007bff;
-            color: #fff;
-            padding: 10px 15px;
-            border-radius: 12px;
-            text-align: right;
-            margin-left: auto;
-            width: fit-content;
-        }
+.welcome-sent{
+    background-color: #d1e7dd;
+    padding: 8px;
+    border-radius: 10px;
+    margin: 5px 0;
+    text-align: left;
+    font-size: 14px;
+    color: #005bb5;
+}
 
-        .received p {
-            background-color: #e0e0e0;
-            color: #333;
-            padding: 10px 15px;
-            border-radius: 12px;
-            width: fit-content;
-        }
+.sent {
+    background-color: #d1e7dd;
+    padding: 8px;
+    border-radius: 10px;
+    margin: 5px 0;
+    text-align: left;
+    font-size: 14px;
+    color: #005bb5;
+}
 
-        /* Hidden by default */
-        .d-none {
-            display: none;
-        }
+.received {
+    background-color: #f8d7da;
+    padding: 8px;
+    border-radius: 10px;
+    margin: 5px 0;
+    text-align: left;
+    font-size: 14px;
+    color: #b23b3b;
+}
 
-        #message-box {
-            max-height: 400px;
-            overflow-y: auto;
-        }
-
-        /* Hide the search input by default */
-        .search-input {
-            display: none;
-        }
-    </style>
-
-    <!-- Script Loading Order and Dependencies -->
-    <script src="https://code.jquery.com/jquery-3.1.1.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/popper.js@1.12.9/dist/umd/popper.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/bootstrap@4.0.0/dist/js/bootstrap.min.js"></script>
-    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-    <script src="Js/Ownerpanel.js"></script>
-    <script src="Js/navb.js"></script>
-    <script src="Js/viewmessage.js"></script>
-
-    <script>
-        // Toggle the visibility of the search input field
-        function toggleSearchInput() {
-            const searchInput = document.getElementById('search-input');
-            searchInput.classList.toggle('d-none');
-        }
-
-        // Search function that filters messages based on name, date, or content
-        function searchMessage() {
-            const query = document.getElementById('search-input').value.toLowerCase();
-            const users = document.querySelectorAll('.user-item');
-            users.forEach(user => {
-                const username = user.querySelector('.username').textContent.toLowerCase();
-                const message = user.querySelector('.recent-message').textContent.toLowerCase();
-                const date = user.querySelector('.message-date').textContent.toLowerCase();
-                
-                if (username.includes(query) || message.includes(query) || date.includes(query)) {
-                    user.style.display = '';
-                } else {
-                    user.style.display = 'none';
-                }
-            });
-        }
-    </script>
-</body>
-</html>
+.timestamp {
+    font-size: 0.8em;
+    color: #888;
+    margin-left: 5px;
+}
+</style>
